@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>广东爱情故事 · 剧情互动叙事游戏</title>
+<style>
+  /* ============ 水墨基调 ============ */
+  :root{
+    --paper:#ece7db;        /* 冷宣纸（略灰蓝） */
+    --paper2:#e4dfcf;       /* 熟宣（冷调） */
+    --paper3:#d8cfba;       /* 旧纸（冷） */
+    --ink:#27251f;          /* 浓墨 */
+    --ink2:#3c3931;         /* 中墨 */
+    --ink3:#6b665b;         /* 淡墨 */
+    --washtint:#8b9186;     /* 青灰渲染 */
+    --washgreen:#75867a;    /* 苔青 */
+    --vermilion:#a63a2b;    /* 朱砂 */
+    --gold:#b28a4b;         /* 泥金 */
+    --serif:"Songti SC","Noto Serif SC","Source Han Serif SC","STSong","SimSun","Times New Roman",serif;
+    --kai:"Kaiti SC","STKaiti","KaiTi","FZKai-Z03S",var(--serif);
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; overflow:hidden; }
+  body{
+    font-family:var(--serif);
+    background:#171512;
+    color:var(--ink);
+    user-select:none;
+    -webkit-user-select:none;
+    touch-action:manipulation;
+  }
+  #stage{ position:relative; width:100vw; height:100vh; overflow:hidden; background:var(--paper); }
+
+  /* ============ 全局 SVG 滤镜（墨色晕染） ============ */
+  #filters{ position:absolute; width:0; height:0; pointer-events:none; }
+
+  /* ---- 场景层 ---- */
+  #scene{ position:absolute; inset:0; }
+  #scene svg{ position:absolute; inset:0; width:100%; height:100%; display:block;
+    filter:url(#inkWash) saturate(.77) contrast(1.04) brightness(.94); }
+  #scene img.photobg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+    filter:saturate(.92) contrast(1.03) brightness(1.01); }
+  .grain{ position:absolute; inset:0; pointer-events:none; opacity:.5; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E"); }
+  .vignette{ position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 50%, rgba(36,39,43,.36) 100%); }
+  .mist{ position:absolute; inset:0; z-index:5; pointer-events:none;
+    background:linear-gradient(to top, rgba(165,168,160,.44) 0%, rgba(165,168,160,.22) 28%, transparent 46%); }
+
+  /* ============ HUD（水墨题签） ============ */
+  #hud{ position:absolute; top:0; left:0; right:0; padding:18px 22px;
+    display:flex; align-items:flex-start; justify-content:space-between; z-index:20; pointer-events:none; }
+  #leftTags{ display:flex; gap:12px; align-items:flex-start; }
+  #povTag, #dayTag{ font-size:14px; letter-spacing:.35em; color:var(--ink2);
+    background:rgba(242,236,223,.55); backdrop-filter:blur(2px);
+    padding:7px 14px 7px 18px; border:1px solid rgba(39,37,31,.18);
+    box-shadow:inset 0 0 0 3px rgba(242,236,223,.35); }
+  #povTag{ border-radius:2px 10px 2px 10px; }
+  #dayTag{ border-radius:10px 2px 10px 2px; }
+  #rightHud{ display:flex; flex-direction:column; align-items:flex-end; gap:9px; }
+  #wallet{ font-size:16px; letter-spacing:.12em; color:var(--ink2); font-weight:600;
+    background:rgba(242,236,223,.55); backdrop-filter:blur(2px);
+    padding:6px 14px; border:1px solid rgba(39,37,31,.18); border-radius:2px 10px 2px 10px; }
+  #hpWrap{ display:flex; align-items:center; gap:9px; background:rgba(242,236,223,.55);
+    backdrop-filter:blur(2px); padding:6px 12px 6px 8px; border:1px solid rgba(39,37,31,.18);
+    border-radius:10px 2px 10px 2px; }
+  #hpLamp{ width:11px; height:11px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #7fb98a, #3f7a52);
+    box-shadow:0 0 8px rgba(80,130,90,.6); transition:background .6s,box-shadow .6s; }
+  #hpLamp.critical{ animation:lampflick 2.7s infinite; }
+  @keyframes lampflick{ 0%,100%{opacity:1} 46%{opacity:.84} 52%{opacity:.62} 55%{opacity:.95} 71%{opacity:.7} 74%{opacity:1} }
+  #hpBar{ width:130px; height:7px; border-radius:4px;
+    background:linear-gradient(90deg, rgba(39,37,31,.14), rgba(39,37,31,.08)); overflow:hidden; }
+  #hpFill{ height:100%; width:100%; border-radius:4px;
+    background:linear-gradient(90deg,#5f9c6f,#8fbb92);
+    transition:width .8s cubic-bezier(.22,1,.36,1), background .8s; }
+  #hpNum{ font-size:12px; color:var(--ink3); min-width:24px; letter-spacing:.06em; }
+  #debtTag{ font-size:12px; color:var(--vermilion); letter-spacing:.1em; opacity:.85; display:none; }
+
+  /* ============ 主立绘（左下角 · 宣纸小画框） ============ */
+  #portrait{ position:absolute; left:16px; bottom:18px; top:auto; transform:none;
+    width:min(16.5vw,320px); height:auto; aspect-ratio:4/5; z-index:14; pointer-events:none;
+    background:linear-gradient(165deg, rgba(240,235,223,.95), rgba(221,213,195,.92));
+    border:1px solid rgba(39,37,31,.55); border-radius:8px;
+    outline:1px solid rgba(178,138,75,.5); outline-offset:-5px;
+    box-shadow:0 12px 28px rgba(23,21,18,.3);
+    transition:opacity .6s, transform .6s; }
+  #portrait.hide{ opacity:0; transform:translateY(16px); }
+  #portrait .scrollbody{ position:absolute; inset:0; overflow:hidden; border-radius:inherit; }
+  #portrait .scrollbody img{ width:100%; height:100%; object-fit:contain; object-position:center bottom;
+    padding:10px 10px 2px; box-sizing:border-box; display:block; }
+  #portrait::before, #portrait::after{ content:none; }
+  /* 右上 · 陪衬立绘（贴右缘 · 宣纸小画框） */
+  #companion{ position:absolute; right:16px; top:100px; width:min(15vw,300px); height:auto; aspect-ratio:4/5;
+    z-index:13; pointer-events:none;
+    background:linear-gradient(165deg, rgba(240,235,223,.95), rgba(221,213,195,.92));
+    border:1px solid rgba(39,37,31,.55); border-radius:8px;
+    outline:1px solid rgba(178,138,75,.5); outline-offset:-5px;
+    box-shadow:0 12px 28px rgba(23,21,18,.3);
+    transition:opacity .6s, transform .6s; }
+  #companion.hide{ opacity:0; transform:translateY(-12px); }
+  #companion .cardbody{ position:absolute; inset:0; overflow:hidden; border-radius:inherit; }
+  #companion .cardbody img{ width:100%; height:100%; object-fit:contain; object-position:center bottom;
+    padding:10px 10px 2px; box-sizing:border-box; display:block; }
+  #companion .cardbody::after{ content:none; }
+  /* NPC 剪影 · 无框浮层（黑色剪影立绘） */
+  #portrait.sil, #companion.sil{ background:transparent; border:none; outline:none; box-shadow:none; }
+  #portrait.sil .scrollbody img, #companion.sil .cardbody img{ padding:0;
+    filter:drop-shadow(0 12px 18px rgba(18,16,13,.38)); }
+  /* 说话人剪影 · 居中（早餐摊阿姨等无脸 NPC） */
+  #portrait.center{ left:50%; top:42%; bottom:auto; width:min(19vw,360px);
+    transform:translate(-50%,-50%); }
+  #portrait.center.hide{ transform:translate(-50%,calc(-50% + 16px)); }
+  @media (max-width:820px){ #portrait.center{ width:56vw; } }
+  @media (max-width:820px){
+    #portrait{ width:44vw; left:10px; bottom:200px; }
+    #companion{ width:38vw; right:10px; top:76px; }
+  }
+
+  /* ============ 对话框（水墨题签·底部居中·放大版） ============ */
+  #dialogue{ position:absolute; left:50%; bottom:24px; transform:translateX(-50%);
+    width:min(900px,62vw); z-index:30; display:flex; flex-direction:column; gap:8px;
+    transition:opacity .3s; }
+  #dialogue.hide{ opacity:0; pointer-events:none; }
+  #namePlate{ align-self:flex-start; font-family:var(--kai); font-size:18px; letter-spacing:.3em;
+    padding:5px 18px 6px 22px; margin-left:12px; color:var(--vermilion);
+    background:linear-gradient(180deg, rgba(242,236,223,.92), rgba(232,224,206,.92));
+    border:1px solid rgba(166,58,43,.35); border-radius:2px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  #textBox{ position:relative; background:linear-gradient(180deg, rgba(244,238,226,.94), rgba(236,227,210,.94));
+    border:1px solid rgba(39,37,31,.22); border-radius:3px;
+    box-shadow:0 10px 30px rgba(30,24,15,.25), inset 0 0 40px rgba(120,100,60,.05);
+    padding:22px 30px 24px; min-height:110px; }
+  #textBox::before{ content:""; position:absolute; inset:7px; border:1px solid rgba(166,58,43,.15);
+    border-radius:1px; pointer-events:none; }
+  #text{ font-size:20px; line-height:1.95; letter-spacing:.04em; white-space:pre-wrap; color:var(--ink); }
+  #text.typing::after{ content:"︱"; animation:blink 1s steps(2) infinite; color:var(--vermilion); }
+  @keyframes blink{ 50%{ opacity:0; } }
+  #continue{ position:absolute; right:22px; bottom:12px; font-size:13px; color:var(--ink3);
+    letter-spacing:.2em; opacity:.55; animation:sway 2.6s infinite; }
+  @keyframes sway{ 50%{ transform:translateY(-3px); } }
+  @media (max-width:820px){
+    #dialogue{ width:calc(100vw - 24px); bottom:12px; }
+    #textBox{ padding:16px 18px 18px; min-height:84px; }
+    #text{ font-size:16px; line-height:1.8; }
+    #namePlate{ font-size:15px; }
+  }
+
+  /* ============ 选择（朱砂点选·回中） ============ */
+  #choices{ position:absolute; left:50%; bottom:160px; transform:translateX(-50%);
+    display:flex; flex-direction:column; gap:12px; z-index:32; width:min(600px,46vw); }
+  #choices button{ font-size:17px; line-height:1.6; padding:13px 20px 13px 24px; cursor:pointer;
+    color:var(--ink); text-align:left; letter-spacing:.03em;
+    background:linear-gradient(180deg, rgba(246,240,228,.96), rgba(236,228,210,.96));
+    border:1px solid rgba(39,37,31,.24); border-radius:3px;
+    box-shadow:0 6px 20px rgba(30,24,15,.18); position:relative;
+    transition:transform .12s, border-color .2s, background .2s; }
+  #choices button::before{ content:""; position:absolute; left:10px; top:50%; width:4px; height:4px;
+    border-radius:50%; background:var(--vermilion); transform:translateY(-50%); opacity:.5; }
+  #choices button:hover{ border-color:var(--vermilion); transform:translateY(-2px); }
+  #choices button small{ display:block; font-size:12px; color:var(--ink3); margin-top:3px; letter-spacing:.05em; }
+
+  /* ============ 章节/视角转场（题跋） ============ */
+  #chapter{ position:absolute; inset:0; z-index:40; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center, rgba(242,236,223,.97), rgba(210,198,174,.97));
+    opacity:1; transition:opacity .7s; }
+  #chapter.hide{ opacity:0; pointer-events:none; }
+  #chapterCard{ text-align:center; padding:56px 60px; position:relative; }
+  #chapterCard::before{ content:""; position:absolute; inset:10px; border:1px solid rgba(166,58,43,.28); }
+  #chapterCard .big{ font-family:var(--kai); font-size:40px; letter-spacing:.5em; color:var(--ink); font-weight:400; }
+  #chapterCard .sub{ font-size:14px; letter-spacing:.4em; color:var(--ink3); margin-top:18px; }
+  #chapterCard .seal{ width:46px; height:46px; margin:26px auto 0; border:2px solid var(--vermilion);
+    border-radius:3px; color:var(--vermilion); font-size:11px; line-height:1.15;
+    display:flex; align-items:center; justify-content:center; letter-spacing:.1em; }
+
+  /* ============ 标题（标题纸 · 立轴） ============ */
+  #title{ position:absolute; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:0; text-align:center;
+    background:#c4b9a2; padding:20px; overflow:hidden; }
+  /* 标题纸：竖版居中，高度撑满 */
+  #titleBgArt{ position:absolute; inset:0; z-index:1; pointer-events:none;
+    background:url("assets/title_paper.jpg") center center / auto 100% no-repeat; background-color:#c4b9a2; }
+  #title::before{ content:""; position:absolute; inset:0; z-index:2; pointer-events:none; opacity:.35; mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E"); }
+  #titleScroll{ position:relative; z-index:3; display:flex; flex-direction:column; align-items:center;
+    padding:46px 32px 32px;
+    background:transparent; }
+  #titleScroll::before,.titleScrollEdge{ content:""; position:absolute; left:0; right:0; height:22px; }
+  .scrollTop{ display:none; }
+  .scrollBottom{ display:none; }
+  #titleScroll{ border-left:none; border-right:none; }
+  #titleSub{ font-size:11px; letter-spacing:.55em; color:var(--ink3); padding:14px 0 4px; }
+  #titleMain{ font-family:var(--kai); font-size:clamp(32px,5vw,58px); letter-spacing:.14em;
+    color:var(--ink); font-weight:500; writing-mode:horizontal-tb; margin:6px 0; }
+  #titleDivider{ display:flex; align-items:center; gap:12px; margin:14px 0 4px; }
+  #titleDivider .ln{ width:48px; height:1px; background:var(--ink3); opacity:.5; }
+  #titleDivider .diamond{ width:5px; height:5px; background:var(--vermilion); transform:rotate(45deg); }
+  #titleDesc{ font-size:12px; letter-spacing:.2em; color:var(--ink2); line-height:2.0; margin:6px 0 2px; }
+  #titleSeal{ width:46px; height:46px; margin:18px auto 6px; border:2.5px solid var(--vermilion);
+    border-radius:4px; color:var(--vermilion); font-family:var(--kai); font-size:12px; line-height:1.3;
+    display:flex; align-items:center; justify-content:center; }
+  #titleBtns{ display:flex; gap:14px; margin-top:20px; }
+  #titleBtns button{ font-family:var(--serif); font-size:14px; letter-spacing:.3em; padding:9px 20px 9px 25px;
+    cursor:pointer; color:var(--ink); background:transparent; border:1px solid var(--ink3);
+    border-radius:2px; transition:all .18s; position:relative; }
+  #titleBtns button:hover{ color:var(--vermilion); border-color:var(--vermilion); }
+  #titleBtns button.ghost{ color:var(--ink3); border-color:rgba(107,102,91,.5); }
+  #titleCredit{ font-size:10px; letter-spacing:.08em; color:var(--ink3); opacity:.7; margin-top:20px; }
+
+  /* ============ 小游戏 ============ */
+  #mgo{ position:absolute; inset:0; z-index:45; display:none;
+    align-items:center; justify-content:center; flex-direction:column; gap:18px; padding:20px;
+    background:radial-gradient(ellipse at center, rgba(36,33,27,.94), rgba(20,17,13,.97)); }
+  #mgo.on{ display:flex; }
+  #mgo .mgTitle{ font-family:var(--kai); color:#e9dfcc; font-size:22px; letter-spacing:.4em; }
+  #mgo .mgHint{ color:#b9af99; font-size:14px; opacity:.85; max-width:640px; text-align:center;
+    line-height:1.8; letter-spacing:.06em; }
+
+  #screwArea{ position:relative; width:min(56vh,340px); height:min(56vh,340px); }
+  #screwDial{ position:absolute; inset:0; border-radius:50%;
+    background:conic-gradient(#c9a54e 0deg, #c9a54e 70deg, transparent 70deg);
+    box-shadow:inset 0 0 0 5px rgba(233,223,204,.12); }
+  #screwCore{ position:absolute; inset:18%; border-radius:50%;
+    background:radial-gradient(circle, rgba(233,223,204,.10), transparent);
+    border:1.5px solid rgba(233,223,204,.18); pointer-events:none; }
+  #screwDot{ position:absolute; inset:0; pointer-events:none; }
+  #screwDot::after{ content:""; position:absolute; left:50%; top:8%; width:15px; height:15px;
+    transform:translateX(-50%); border-radius:50%; background:#e6c96f; box-shadow:0 0 14px #e6c96f; }
+  #screwProg{ color:#e9dfcc; font-size:16px; letter-spacing:.25em; }
+
+  #receiptCard{ background:linear-gradient(180deg,#f3ecdc,#e6dcc6); color:var(--ink);
+    border-radius:3px; padding:26px 34px; font-size:18px; letter-spacing:.08em; text-align:center;
+    min-width:300px; box-shadow:0 12px 34px rgba(0,0,0,.4); position:relative; }
+  #receiptCard::before{ content:""; position:absolute; inset:7px; border:1px solid rgba(166,58,43,.18); }
+  #receiptCard .amount{ font-size:26px; font-weight:600; margin-top:9px; color:var(--vermilion); letter-spacing:.05em; }
+  #catBtns{ display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+  #catBtns button{ font-family:var(--serif); font-size:15px; letter-spacing:.25em; padding:10px 20px; cursor:pointer;
+    color:#e9dfcc; background:rgba(233,223,204,.08); border:1px solid rgba(233,223,204,.35); border-radius:2px; }
+  #catBtns button.wrong{ animation:shake .4s; border-color:#c0392b; }
+  @keyframes shake{ 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
+
+  #crowd{ display:flex; gap:26px; flex-wrap:wrap; justify-content:center; max-width:760px; }
+  #crowd .fig{ cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px;
+    opacity:.45; transition:opacity .3s; }
+  #crowd .fig.done{ opacity:1; }
+  #crowd .fig svg{ width:56px; height:86px; }
+  #whisper{ color:#d8cbb0; font-size:18px; min-height:30px; letter-spacing:.15em; }
+
+  #waitBtns{ display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+  #waitBtns button{ font-family:var(--serif); font-size:16px; padding:12px 24px; cursor:pointer; letter-spacing:.3em;
+    color:#e9dfcc; background:rgba(233,223,204,.08); border:1px solid rgba(233,223,204,.35); border-radius:2px; }
+  #waitLine{ color:#d8cbb0; font-size:18px; min-height:30px; letter-spacing:.2em; }
+
+  #toast{ position:absolute; left:50%; top:92px; transform:translateX(-50%); z-index:55;
+    background:rgba(30,26,19,.92); color:#e6dcc6; padding:8px 20px; border:1px solid rgba(178,138,75,.4);
+    border-radius:2px; letter-spacing:.15em; font-size:13px; opacity:0; transition:opacity .4s; pointer-events:none; }
+  #toast.show{ opacity:1; }
+  #soundBtn{ position:absolute; right:20px; bottom:22px; z-index:22; cursor:pointer;
+    font-family:var(--serif); font-size:12px; letter-spacing:.2em; color:var(--ink3);
+    background:rgba(242,236,223,.5); border:1px solid rgba(39,37,31,.18); border-radius:2px; padding:5px 12px; }
+  #backBtn{ position:absolute; left:20px; top:62px; z-index:22; cursor:pointer;
+    font-family:var(--serif); font-size:12px; letter-spacing:.2em; color:var(--ink3);
+    background:rgba(242,236,223,.5); border:1px solid rgba(39,37,31,.18); border-radius:2px; padding:5px 12px; }
+  #backBtn.disabled{ opacity:.32; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg id="filters" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="inkWash"><feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="5"/></filter>
+      <filter id="softBlur"><feGaussianBlur stdDeviation="4"/></filter>
+    </defs>
+  </svg>
+  <div id="scene"></div>
+  <div class="grain"></div>
+  <div class="vignette"></div>
+  <div class="mist"></div>
+
+  <div id="hud" style="display:none">
+    <div id="leftTags">
+      <div id="povTag">—</div>
+      <div id="dayTag">—</div>
+    </div>
+    <div id="rightHud">
+      <div id="debtTag">欠 ¥0</div>
+      <div id="wallet">¥0</div>
+      <div id="hpWrap">
+        <div id="hpLamp"></div>
+        <div id="hpBar"><div id="hpFill"></div></div>
+        <div id="hpNum">100</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="portrait" class="hide"></div>
+  <div id="companion" class="hide"></div>
+
+  <div id="dialogue" class="hide">
+    <div id="namePlate"></div>
+    <div id="textBox">
+      <div id="text"></div>
+      <div id="continue">▾ 续</div>
+    </div>
+  </div>
+
+  <div id="choices"></div>
+
+  <div id="chapter" class="hide">
+    <div id="chapterCard">
+      <div class="big"></div>
+      <div class="sub"></div>
+      <div class="seal">广东<br>爱情</div>
+    </div>
+  </div>
+
+  <div id="mgo">
+    <div class="mgTitle"></div>
+    <div class="mgHint"></div>
+    <div id="mgoBody"></div>
+  </div>
+
+  <div id="title">
+    <div id="titleBgBlur"></div>
+    <div id="titleBgArt"></div>
+    <div id="titleScroll">
+      <div class="scrollTop" style="position:absolute;top:0;left:0;right:0;height:22px"></div>
+      <div id="titleSub">剧 · 情 · 互 · 动 · 叙 · 事</div>
+      <h1 id="titleMain">广东爱情故事</h1>
+      <div id="titleDivider"><span class="ln"></span><span class="diamond"></span><span class="ln"></span></div>
+      <div id="titleDesc">七日 · 双视角<br>在「老火汤、处方药、房租、押金」之间取舍</div>
+      <div id="titleSeal">南方<br>有雪</div>
+      <div id="titleBtns">
+        <button id="btnStart">开卷</button>
+        <button id="btnChapters" class="ghost">选章</button>
+      </div>
+      <div id="titleCredit">谨以此篇 · 献给每一个在小城里相爱又硬扛的人</div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <button id="backBtn" class="hide">‹ 回退</button>
+  <button id="soundBtn">音 · 关</button>
+</div>
+<script>
+"use strict";
+/* ================================================================
+   广东爱情故事 · 水墨版
+   引擎 + 立绘 + 场景 + 剧情 · 纯原生实现
+   ================================================================ */
+
+/* ----- 帮助函数 ----- */
+const el = id => document.getElementById(id);
+const $ = (sel, root) => (root||document).querySelector(sel);
+
+/* ----- 状态 ----- */
+const S = {
+  day: 1, money: 800, hp: 100, debt: 0,
+  secret: null, pov: 'rong',
+  fragments: 0, boughtSoup: 0, boughtMed: false,
+  boughtCake: false, nightShift: false, hpTier:'', lifeTier:'',
+};
+
+/* ----- 音频（可选） ----- */
+const AudioBus = (() => {
+  let ctx=null, master=null, noiseGain=null, padGain=null, beatGain=null, on=false,
+      bgm=null, bgmGain=null, bgmSrc=null, bgmDirect=false;
+  function ensure(){
+    if(ctx) return; ctx=new(window.AudioContext||window.webkitAudioContext)();
+    master=ctx.createGain(); master.gain.value=0; master.connect(ctx.destination);
+    // 极轻氛围垫（主背景交给用户选定的钢琴曲）
+    const len=ctx.sampleRate*2, buf=ctx.createBuffer(1,len,ctx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+    const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;
+    const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=500;
+    noiseGain=ctx.createGain();noiseGain.gain.value=0.0;
+    src.connect(lp).connect(noiseGain).connect(master);src.start();
+    const o1=ctx.createOscillator();o1.type='sine';o1.frequency.value=110;
+    const o2=ctx.createOscillator();o2.type='sine';o2.frequency.value=165;
+    padGain=ctx.createGain();padGain.gain.value=0.0;
+    o1.connect(padGain);o2.connect(padGain);padGain.connect(master);o1.start();o2.start();
+    const o3=ctx.createOscillator();o3.type='sine';o3.frequency.value=50;
+    beatGain=ctx.createGain();beatGain.gain.value=0;o3.connect(beatGain).connect(master);o3.start();
+    // 选定背景音乐：04_DarkPiano_mittelalter.mp3
+    bgm=new Audio('audio/04_DarkPiano_mittelalter.mp3'); bgm.loop=true; bgm.preload='auto'; bgm.volume=1;
+    bgmGain=ctx.createGain(); bgmGain.gain.value=0;
+    try{ bgmSrc=ctx.createMediaElementSource(bgm); bgmSrc.connect(bgmGain).connect(master); }
+    catch(e){ bgmDirect=true; bgm.connect(bgmGain); bgmGain.connect(master); }
+  }
+  function fade(node,to,t){ node.gain.cancelScheduledValues(ctx.currentTime); node.gain.linearRampToValueAtTime(to, ctx.currentTime+t); }
+  function setOn(v){
+    on=v;ensure();
+    if(ctx.state==='suspended')ctx.resume();
+    fade(master, v?0.6:0, 0.8);
+    if(bgm){
+      if(v){
+        const p=bgm.play(); if(p&&p.then)p.then(()=>{}).catch(()=>{});
+        fade(bgmGain, 0.9, 1.4);
+        if(bgmDirect) bgm.volume=1;
+      }else{
+        fade(bgmGain, 0, 0.5);
+        const b=bgm; setTimeout(()=>{ if(!on&&b===bgm) b.pause(); }, 700);
+      }
+    }
+    el('soundBtn').textContent=v?'音 · 开':'音 · 关';
+    if(v)heartbeat(0.6);
+  }
+  function heartbeat(intensity){
+    if(!on||!ctx)return;const t=ctx.currentTime;const p=0.9-intensity*0.4;
+    let iv; const beat=()=>{if(!on){clearInterval(iv);return;}
+      const now=ctx.currentTime;beatGain.gain.cancelScheduledValues(now);
+      beatGain.gain.setValueAtTime(0,now);
+      beatGain.gain.linearRampToValueAtTime(0.4*intensity+0.02,now+0.03);
+      beatGain.gain.exponentialRampToValueAtTime(0.001,now+0.22);};
+    beat();iv=setInterval(beat,p*1000);setTimeout(()=>clearInterval(iv),p*1000*4);}
+  function blip(){if(!on||!ctx)return;const o=ctx.createOscillator();o.type='square';o.frequency.value=880;
+    const g=ctx.createGain();g.gain.value=0.05;o.connect(g).connect(master);o.start();o.stop(ctx.currentTime+0.06);}
+  /* —— 音效层（独立小节，统一经 master 输出） —— */
+  function noiseBurst(dur,freq,q,gv){
+    if(!on||!ctx)return;
+    const n=Math.max(1,Math.floor(ctx.sampleRate*dur));
+    const b=ctx.createBuffer(1,n,ctx.sampleRate), dd=b.getChannelData(0);
+    for(let i=0;i<n;i++)dd[i]=Math.random()*2-1;
+    const s=ctx.createBufferSource();s.buffer=b;
+    const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=freq;bp.Q.value=q||1;
+    const g=ctx.createGain(),t=ctx.currentTime;
+    g.gain.setValueAtTime(gv,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    s.connect(bp).connect(g).connect(master);s.start(t);s.stop(t+dur);
+  }
+  function tone(freq,dur,gv,type,when){
+    if(!on||!ctx)return;
+    const t=ctx.currentTime+(when||0);
+    const o=ctx.createOscillator();o.type=type||'sine';o.frequency.value=freq;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(gv,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g).connect(master);o.start(t);o.stop(t+dur);
+  }
+  function click(){ noiseBurst(0.045,1900,1.6,0.05); }                 // 点击换对话
+  function select(){ tone(620,0.08,0.07,'triangle',0); tone(940,0.11,0.06,'triangle',0.06); } // 做选择
+  function screw(){ noiseBurst(0.03,520,2.2,0.09); setTimeout(()=>noiseBurst(0.025,720,2.2,0.06),45); } // 打螺丝拧紧
+  function stamp(){ noiseBurst(0.07,1150,0.7,0.10); tone(150,0.06,0.05,'sine',0); } // 整理单据盖章
+  function error(){ tone(150,0.14,0.06,'square',0); }                   // 分类错误
+  return{setOn,heartbeat,blip,click,select,screw,stamp,error,get on(){return on;}};
+})();
+el('soundBtn').addEventListener('click',()=>AudioBus.setOn(!AudioBus.on));
+
+/* ============ 角色立绘（水墨全身像·真实 PNG） ============ */
+const PORTRAIT_MAP={
+  rong:'chenrong', rong_sad:'chenrong',
+  xiaoman:'xiaoman', xiaoman_smile:'xiaoman', xiaoman_sad:'xiaoman', xiaoman_gown:'xiaoman',
+  zhou:'zhoujin', jie:'huizhen', laoliu:'laoliu',
+  hushi:'hushi', xuwen:'xuwen',
+  auntie:'sil_auntie', sil_girl:'sil_girl',  /* 黑色剪影（无框） */
+};
+function portrait(key){
+  const file=PORTRAIT_MAP[key], box=el('portrait');
+  box.classList.toggle('sil',/^sil/.test(file||''));
+  box.classList.toggle('center',key==='auntie');
+  if(!file){ box.classList.add('hide'); return; }
+  box.innerHTML=`<div class="scrollbody"><img src="portraits/crop/${file}.png" alt=""></div>`;
+  box.classList.remove('hide');
+}
+function hidePortrait(){ el('portrait').classList.add('hide'); }
+function companion(key){
+  const file=PORTRAIT_MAP[key], box=el('companion');
+  box.classList.toggle('sil',/^sil/.test(file||''));
+  if(!file){ box.classList.add('hide'); return; }
+  box.innerHTML=`<div class="cardbody"><img src="portraits/crop/${file}.png" alt=""></div>`;
+  box.classList.remove('hide');
+}
+function hideCompanion(){ el('companion').classList.add('hide'); }
+/* 默认陪衬：说话人手边的那个人（构成"情节场景"） */
+const COMPANION_DEFAULT={ '阿榕':'xiaoman','小满':'rong','周谨':'xuwen','许闻':'zhou','珍姐':'xiaoman','老六':'rong','护士':'rong' };
+
+/* ============ 水墨场景（冷调·萧条·缺位——悲伤藏于景） ============ */
+const SC={ // ink wash scene presets
+  /* 病房 · 实景照片（序章 · 医生访谈专用） */
+  ward:()=>`<img class="photobg" src="scenes/ward.jpg" alt="">`,
+  /* 街道 · 实景照片（序章结尾 · 推向窗外 / 第一章 · 城中村早晨） */
+  streetphoto:()=>`<img class="photobg" src="scenes/street.jpg" alt="">`,
+  /* 出租屋 · 实景照片（第一章 · 起居与煲汤） */
+  bedroomphoto:()=>`<img class="photobg" src="scenes/bedroom.jpg" alt="">`,
+  /* 祠堂 · 实景照片（结局终章 · 四景混合） */
+  shrine1:()=>`<img class="photobg" src="scenes/shrine1.jpg" alt="">`,
+  shrine2:()=>`<img class="photobg" src="scenes/shrine2.jpg" alt="">`,
+  shrine3:()=>`<img class="photobg" src="scenes/shrine3.jpg" alt="">`,
+  shrine4:()=>`<img class="photobg" src="scenes/shrine4.jpg" alt="">`,
+  /* 诊所 · 实景照片（第二章 · 社区医院确诊） */
+  clinicphoto:()=>`<img class="photobg" src="scenes/clinic.jpg" alt="">`,
+  /* 工厂 · 实景照片（第二~五章 · 流水线 / 夜班） */
+  factoryphoto:()=>`<img class="photobg" src="scenes/factory.jpg" alt="">`,
+  /* 殡仪馆 · 实景照片（第六章 · 葬礼 · 雨中黑伞） */
+  funeralphoto:()=>`<img class="photobg" src="scenes/funeral.jpg" alt="">`,
+  /* 医院 · 实景照片（第三~七章 · 三景分用：病房 / 走廊 / 清晨女孩） */
+  hospital1:()=>`<img class="photobg" src="scenes/hospital1.jpg" alt="">`,
+  hospital2:()=>`<img class="photobg" src="scenes/hospital2.jpg" alt="">`,
+  hospital3:()=>`<img class="photobg" src="scenes/hospital3.jpg" alt="">`,
+  /* 病房生日 · 实景照片（第七章 · 生日 · 床头小蛋糕与晨光） */
+  birthdayphoto:()=>`<img class="photobg" src="scenes/birthday.jpg" alt="">`,
+  /* 深夜手术走廊 · 实景照片（第七章 · 手术首付 / 手术室外红灯） */
+  corridorphoto:()=>`<img class="photobg" src="scenes/corridor.jpg" alt="">`,
+  /* 医生办公室 · 实景照片（间幕 / 尾声 · 许闻采访周谨，窗外有雨） */
+  officephoto:()=>`<img class="photobg" src="scenes/office.jpg" alt="">`,
+  /* 卧室 · 冷晓。谢了的花、撕破的日历、没有热气的茶壶、未叠的床 */
+  bedroom:()=>`<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="900" fill="#e8e5dd"/>
+    <radialGradient id="rd1" cx="0.34" cy="0.2" r="0.72"><stop offset="0" stop-color="#e7ebea" stop-opacity=".92"/><stop offset="1" stop-color="#d9d6cd" stop-opacity=".55"/></radialGradient>
+    <rect width="1600" height="900" fill="url(#rd1)"/>
+    <ellipse cx="330" cy="210" rx="215" ry="185" fill="#edf0ee" opacity=".5" filter="url(#softBlur)"/>
+    <rect x="1330" y="58" width="152" height="320" rx="4" fill="#c6c2ba" opacity=".72"/>
+    <rect x="1340" y="70" width="132" height="142" fill="#d3d8db" opacity=".68"/>
+    <rect x="1392" y="86" width="8" height="108" fill="#b9bdc0" opacity=".7"/>
+    <rect x="1376" y="182" width="60" height="6" fill="#b9bdc0" opacity=".7"/>
+    <g stroke="#49453d" stroke-width="3" fill="none" opacity=".38">
+      <path d="M0,812 Q380,762 780,802 T1600,794"/>
+      <path d="M0,842 Q480,796 980,830 T1600,822"/>
+    </g>
+    <rect x="70" y="550" width="520" height="170" rx="12" fill="#b4aa9b"/>
+    <ellipse cx="320" cy="592" rx="200" ry="76" fill="#c2b8a8" opacity=".72"/>
+    <path d="M184,544 q18,26 0,44 M262,542 q20,30 0,50 M340,542 q18,28 0,48" stroke="#948a78" stroke-width="4" fill="none"/>
+    <rect x="90" y="456" width="80" height="124" rx="10" fill="#b4aa9b"/>
+    <rect x="470" y="456" width="80" height="124" rx="10" fill="#b4aa9b"/>
+    <rect x="120" y="478" width="340" height="58" rx="12" fill="#d8cdb6"/>
+    <rect x="126" y="500" width="70" height="22" rx="6" fill="#7a756c" opacity=".6"/>
+    <rect x="260" y="130" width="160" height="210" rx="6" fill="#9a9081" opacity=".72" stroke="#58503f" stroke-width="4"/>
+    <rect x="272" y="156" width="116" height="150" fill="#c2b7a4" opacity=".82"/>
+    <rect x="300" y="268" width="60" height="76" fill="#e4ded0" opacity=".6"/>
+    <ellipse cx="340" cy="116" rx="52" ry="48" fill="#e8eceb" opacity=".4" filter="url(#softBlur)"/>
+    <g transform="translate(700,150)">
+      <rect x="0" y="0" width="150" height="132" fill="#f1ece0" stroke="#6a6151" stroke-width="4"/>
+      <g stroke="#6a6151" stroke-width="3" opacity=".66">
+        <line x1="38" y1="0" x2="38" y2="132"/><line x1="76" y1="0" x2="76" y2="132"/><line x1="114" y1="0" x2="114" y2="132"/>
+        <line x1="0" y1="44" x2="150" y2="44"/><line x1="0" y1="88" x2="114" y2="88"/>
+      </g>
+      <circle cx="114" cy="22" r="13" fill="none" stroke="#8f4b3a" stroke-width="4"/>
+      <path d="M112,100 l20,-4 l-2,12" stroke="#77705f" stroke-width="2" fill="none" opacity=".5"/>
+    </g>
+    <g transform="translate(980,586)">
+      <path d="M28,140 Q26,96 14,60 Q10,48 6,28 L24,30 Q38,52 42,70 Q50,112 52,140 Z" fill="#7d8877" stroke="#59604f" stroke-width="3"/>
+      <path d="M50,96 Q78,84 88,40 Q92,30 102,14 L110,32 Q96,56 90,76 Q80,108 56,124 Z" fill="#6f7a6a" opacity=".85"/>
+      <path d="M8,54 Q-8,60 -22,74" stroke="#6a6b57" stroke-width="3" fill="none"/>
+    </g>
+  </svg>`,
+  /* 街巷 · 雨。远处的人影背身走远，万家灯火只亮一扇窗 */
+  street:()=>`<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="900" fill="#d9d7cf"/>
+    <rect x="0" y="0" width="1600" height="360" fill="#c3c8c8"/>
+    <rect x="0" y="610" width="1600" height="290" fill="#b6b9ad"/>
+    <g fill="#a2a89f" opacity=".6">
+      <rect x="100" y="140" width="180" height="360"/>
+      <rect x="460" y="180" width="200" height="320"/>
+      <rect x="860" y="120" width="200" height="380"/>
+      <rect x="1180" y="190" width="260" height="310"/>
+    </g>
+    <g stroke="#454238" stroke-width="3" fill="none" opacity=".36">
+      <path d="M100,270 Q200,292 280,262"/>
+      <path d="M460,312 Q560,334 660,302"/>
+      <path d="M860,232 Q960,272 1060,244"/>
+    </g>
+    <g fill="#262320" opacity=".68">
+      <rect x="140" y="312" width="100" height="30" rx="4"/>
+      <rect x="510" y="362" width="110" height="32" rx="4"/>
+      <rect x="900" y="292" width="100" height="30" rx="4"/>
+    </g>
+    <rect x="1290" y="236" width="46" height="40" rx="3" fill="#d8a05a" opacity=".7"/>
+    <rect x="508" y="122" width="40" height="34" opacity="0"/>
+    <g stroke="#87867e" stroke-width="3" opacity=".5">
+      <path d="M0,140 Q400,202 800,160 Q1200,120 1600,182"/><path d="M0,420 Q500,462 1000,432 Q1300,400 1600,452"/>
+    </g>
+    <g stroke="#cfd2d0" stroke-width="2.5" opacity=".5">
+      <line x1="120" y1="120" x2="84" y2="240"/><line x1="360" y1="60" x2="324" y2="176"/>
+      <line x1="600" y1="90" x2="564" y2="210"/><line x1="840" y1="50" x2="804" y2="170"/>
+      <line x1="1080" y1="80" x2="1044" y2="200"/><line x1="1320" y1="60" x2="1284" y2="180"/>
+      <line x1="240" y1="60" x2="204" y2="180"/><line x1="720" y1="120" x2="684" y2="240"/>
+    </g>
+    <g fill="#4b4740" opacity=".55">
+      <path d="M150,540 q14,-48 0,-66 M620,524 q12,-42 0,-58 M1030,546 q14,-46 0,-62"/>
+    </g>
+  </svg>`,
+  /* 社区诊所 · 冷白灯。一排空椅，墙上的旧海报卷了边 */
+  clinic:()=>`<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="900" fill="#e0dfd8"/>
+    <rect x="0" y="680" width="1600" height="220" fill="#c2bead"/>
+    <rect x="140" y="150" width="180" height="470" rx="6" fill="#babfc0" opacity=".6"/>
+    <rect x="1280" y="150" width="180" height="470" rx="6" fill="#babfc0" opacity=".6"/>
+    <rect x="400" y="180" width="500" height="300" rx="8" fill="#e9e6dd" stroke="#968d70" stroke-width="5" opacity=".85"/>
+    <rect x="430" y="206" width="180" height="50" fill="#a34a3c" opacity=".1"/>
+    <g stroke="#8f9594" stroke-width="9" opacity=".55"><line x1="600" y1="120" x2="600" y2="180"/></g>
+    <rect x="1040" y="640" width="280" height="70" rx="8" fill="#b0a691"/>
+    <g fill="#7d725c" opacity=".5">
+      <rect x="560" y="500" width="76" height="90" rx="8"/><rect x="660" y="500" width="76" height="90" rx="8"/>
+      <rect x="760" y="500" width="76" height="90" rx="8"/><rect x="860" y="500" width="76" height="90" rx="8"/>
+    </g>
+    <g stroke="#7d725c" stroke-width="4" opacity=".55">
+      <line x1="598" y1="500" x2="598" y2="480"/><line x1="698" y1="500" x2="698" y2="480"/>
+      <line x1="798" y1="500" x2="798" y2="480"/><line x1="898" y1="500" x2="898" y2="480"/>
+    </g>
+    <g transform="translate(1060,240)">
+      <rect width="150" height="100" fill="#f0ece0" stroke="#a99c88" stroke-width="4"/>
+      <rect x="16" y="18" width="118" height="50" fill="#c8c2b2" opacity=".7"/>
+      <path d="M150,8 q-14,4 -10,18" stroke="#a99c88" stroke-width="3" fill="none"/>
+    </g>
+  </svg>`,
+  /* 医院 · 无尽的走廊没入黑暗，空床与输液架，门帘掀开一半 */
+  hospital:()=>`<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="900" fill="#d2d6d2"/>
+    <polygon points="0,900 0,560 800,900" fill="#b9beb9" opacity=".85"/>
+    <polygon points="1600,900 1600,560 800,900" fill="#b9beb9" opacity=".85"/>
+    <rect x="0" y="0" width="1600" height="110" fill="#c8cdc8"/>
+    <g fill="#e2e6e2" opacity=".85">
+      <rect x="0" y="160" width="420" height="260" fill="#dfe3df"/>
+      <rect x="1180" y="160" width="420" height="260" fill="#dfe3df"/>
+    </g>
+    <g fill="#c8cec8" opacity=".5">
+      <rect x="560" y="130" width="200" height="26" rx="13"/>
+      <rect x="840" y="130" width="200" height="26" rx="13"/>
+      <rect x="1060" y="130" width="120" height="26" rx="13"/>
+    </g>
+    <g fill="#eef1ec" stroke="#a4aba2" stroke-width="5">
+      <rect x="300" y="500" width="330" height="150" rx="12"/>
+      <rect x="300" y="416" width="330" height="66" rx="10"/>
+      <rect x="970" y="500" width="330" height="150" rx="12"/>
+      <rect x="970" y="416" width="330" height="66" rx="10"/>
+    </g>
+    <ellipse cx="466" cy="588" rx="92" ry="34" fill="#cfd3cd" opacity=".7"/>
+    <path d="M330,428 q60,-30 120,0 q60,-24 40,10 l-6,12 q-20,-20 -80,-8 q-40,-12 -74,6 Z" fill="#cdd2cb" opacity=".8"/>
+    <line x1="1280" y1="360" x2="1280" y2="540" stroke="#6f766f" stroke-width="10" opacity=".55"/>
+    <rect x="1268" y="352" width="24" height="14" rx="4" fill="#5e655e" opacity=".7"/>
+    <rect x="1240" y="386" width="42" height="58" rx="8" fill="none" stroke="#8a918a" stroke-width="4" opacity=".6"/>
+    <path d="M1160,340 Q1160,240 1360,220 Q1480,220 1480,320" stroke="#7d857d" stroke-width="4" fill="none" opacity=".5"/>
+  </svg>`,
+  /* 厂房 · 无穷往复的机器，昏暗灯下押着一方小小相片 */
+  factory:()=>`<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="900" fill="#b7bcb5"/>
+    <rect x="0" y="0" width="1600" height="90" fill="#838a82"/>
+    <rect x="0" y="626" width="1600" height="120" fill="#6f766e"/>
+    <g fill="#dfe2dc" opacity=".7">
+      <rect x="40" y="132" width="140" height="22" rx="10"/>
+      <rect x="330" y="132" width="140" height="22" rx="10"/>
+      <rect x="640" y="132" width="140" height="22" rx="10"/>
+      <rect x="960" y="132" width="140" height="22" rx="10"/>
+      <rect x="1280" y="132" width="140" height="22" rx="10"/>
+    </g>
+    <g fill="#7f867e" stroke="#565c54" stroke-width="5">
+      <rect x="100" y="470" width="200" height="124" rx="6"/>
+      <rect x="460" y="470" width="200" height="124" rx="6"/>
+      <rect x="820" y="470" width="200" height="124" rx="6"/>
+      <rect x="1180" y="470" width="200" height="124" rx="6"/>
+    </g>
+    <g fill="#3a3e35">
+      <circle cx="200" cy="386" r="20"/><circle cx="300" cy="386" r="20"/>
+      <circle cx="560" cy="386" r="20"/><circle cx="660" cy="386" r="20"/>
+      <circle cx="920" cy="386" r="20"/><circle cx="1020" cy="386" r="20"/>
+      <circle cx="1280" cy="386" r="20"/><circle cx="1380" cy="386" r="20"/>
+    </g>
+    <line x1="0" y1="440" x2="1600" y2="440" stroke="#4a5048" stroke-width="4" opacity=".5"/>
+    <g transform="translate(140,330)">
+      <rect width="70" height="52" fill="#f1e9d8" stroke="#6a6456" stroke-width="3"/>
+      <rect x="8" y="8" width="26" height="36" fill="#c8a06a"/>
+      <rect x="40" y="8" width="22" height="18" fill="#8b9a8a"/>
+      <path d="M48,4 l8,-6 l8,6 Z" fill="#6a6456"/>
+    </g>
+  </svg>`,
+  /* 葬礼 · 冷雨。人散得稀疏，纸钱的火很小、很快灭 */
+  funeral:()=>`<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="900" fill="#85907e"/>
+    <ellipse cx="800" cy="380" rx="760" ry="520" fill="#707871"/>
+    <g stroke="#d6d0bf" stroke-width="3" opacity=".38">
+      <line x1="100" y1="70" x2="80" y2="210"/><line x1="340" y1="50" x2="320" y2="230"/>
+      <line x1="580" y1="80" x2="560" y2="240"/><line x1="800" y1="40" x2="780" y2="220"/>
+      <line x1="1040" y1="70" x2="1020" y2="230"/><line x1="1280" y1="50" x2="1260" y2="220"/>
+      <line x1="1500" y1="70" x2="1480" y2="210"/>
+    </g>
+    <ellipse cx="800" cy="550" rx="540" ry="140" fill="#5c6359"/>
+    <g fill="#23251f">
+      <circle cx="470" cy="470" r="22"/><circle cx="660" cy="498" r="20"/>
+      <circle cx="860" cy="472" r="23"/><circle cx="1060" cy="498" r="20"/>
+      <circle cx="1200" cy="470" r="22"/>
+    </g>
+    <g fill="#1b1f19">
+      <path d="M430,592 q22,-60 44,0 q18,-54 44,0 q26,-64 52,0 z"/>
+      <path d="M760,600 q22,-60 44,0 q18,-54 44,0 q26,-64 52,0 z"/>
+      <path d="M1070,592 q22,-60 44,0 q18,-54 44,0 q26,-64 52,0 z"/>
+    </g>
+    <g fill="#c49a4a" stroke="#1b1f19" stroke-width="2"><circle cx="860" cy="490" r="11"/><circle cx="865" cy="485" r="11"/><circle cx="855" cy="485" r="11"/></g>
+    <g stroke="#cbd0ca" stroke-width="2.5" opacity=".5">
+      <line x1="140" y1="110" x2="102" y2="240"/><line x1="420" y1="70" x2="382" y2="198"/>
+      <line x1="660" y1="90" x2="622" y2="220"/><line x1="900" y1="60" x2="862" y2="188"/>
+      <line x1="1140" y1="80" x2="1102" y2="210"/><line x1="1380" y1="60" x2="1342" y2="190"/>
+    </g>
+  </svg>`,
+};
+function setScene(k){currentScene=k; el('scene').innerHTML=(SC[k]||SC.bedroom)();}
+
+/* ============ 对话引擎（与前一版相同，rename 是为了不修改核心逻辑） ============ */
+let _adv=null;
+let lineHistory=[], liveIdx=-1, rewindDepth=0, currentScene='bedroom';
+
+document.addEventListener('pointerdown',e=>{
+  if(e.target.closest('#choices')||e.target.closest('#mgo')||e.target.closest('#end')
+     ||e.target.closest('#title')||e.target.closest('#soundBtn')||e.target.closest('#backBtn'))return;
+  if(rewindDepth>0){ stepForward(); return; }
+  if(_adv){const f=_adv;_adv=null;f();}
+});
+function stepForward(){
+  if(rewindDepth<=0) return;
+  rewindDepth--;
+  renderSnapshot(lineHistory[liveIdx-rewindDepth]);
+  if(rewindDepth>0) AudioBus.click();
+  updateBackBtn();
+}
+function renderSnapshot(s){
+  if(!s)return;
+  el('dialogue').classList.remove('hide','pos-right');
+  el('namePlate').textContent=s.who||'';
+  el('namePlate').style.display=s.who?'block':'none';
+  const t=el('text'); t.textContent=s.text; t.classList.remove('typing');
+  el('continue').style.display='block';
+  setScene(s.scene);
+  el('portrait').className=s.portraitClass;
+  el('portrait').innerHTML=s.portraitHTML;
+  el('companion').className=s.companionClass;
+  el('companion').innerHTML=s.companionHTML;
+}
+function pushLine(s){
+  lineHistory.push(s); liveIdx=lineHistory.length-1; rewindDepth=0;
+  updateBackBtn();
+}
+function clearHistory(){ lineHistory=[]; liveIdx=-1; rewindDepth=0; updateBackBtn(); }
+function updateBackBtn(){
+  const btn=el('backBtn'); if(!btn)return;
+  const dlgVisible=!el('dialogue').classList.contains('hide');
+  if(!dlgVisible){ btn.classList.add('hide'); return; }
+  btn.classList.remove('hide');
+  const canBack = lineHistory.length>1 && rewindDepth<liveIdx;
+  btn.classList.toggle('disabled', !canBack);
+}
+el('backBtn').addEventListener('click',e=>{
+  e.stopPropagation();
+  if(rewindDepth<liveIdx){ rewindDepth++; renderSnapshot(lineHistory[liveIdx-rewindDepth]); AudioBus.click(); updateBackBtn(); }
+});
+function say(who,text,opts={}){
+  return new Promise(res=>{
+    const dlg=el('dialogue');dlg.classList.remove('hide','pos-right');
+    el('namePlate').textContent=who||'';
+    el('namePlate').style.display=who?'block':'none';
+    const txt=el('text');txt.textContent='';txt.classList.add('typing');
+    el('continue').style.display='block';
+    if(opts.scene)setScene(opts.scene);
+    if(opts.portrait)portrait(opts.portrait);
+    else if(opts.portrait===null)hidePortrait();
+    const comp = (opts.companion===undefined) ? (COMPANION_DEFAULT[who]||null) : opts.companion;
+    if(comp)companion(comp); else hideCompanion();
+    pushLine({who, text, scene:currentScene,
+      portraitClass:el('portrait').className, portraitHTML:el('portrait').innerHTML,
+      companionClass:el('companion').className, companionHTML:el('companion').innerHTML});
+    if(opts.audio)AudioBus.blip();
+    let finished=false,done=false,i=0;
+    const speed=opts.speed||16;
+    const interval=setInterval(()=>{
+      if(finished||done)return;
+      i++;txt.textContent=text.slice(0,i);
+      if(i>=text.length){finished=true;clearInterval(interval);txt.classList.remove('typing');}
+    },speed);
+    function makeAdv(){
+      let f=()=>{
+        if(done)return;
+        if(!finished){finished=true;clearInterval(interval);txt.textContent=text;txt.classList.remove('typing');_adv=makeAdv();}
+        else{done=true;clearInterval(interval);txt.classList.remove('typing');el('continue').style.display='none';AudioBus.click();res();}
+      };return f;
+    }
+    _adv=makeAdv();
+  });
+}
+async function narrate(text,opts={}){return say('',text,Object.assign({portrait:null},opts));}
+function choose(opts){
+  return new Promise(res=>{
+    clearHistory();
+    const box=el('choices');box.innerHTML='';
+    hidePortrait();hideCompanion();el('dialogue').classList.add('hide');el('continue').style.display='none';
+    opts.forEach((o,i)=>{
+      const b=document.createElement('button');
+      b.innerHTML=o.label+(o.sub?`<small>${o.sub}</small>`:'');
+      b.addEventListener('click',e=>{e.stopPropagation();AudioBus.select();box.innerHTML='';res(i);});
+      box.appendChild(b);
+    });
+  });
+}
+
+/* HUD */
+function showHUD(){el('hud').style.display='flex';updateHUD();}
+function updateHUD(){
+  el('dayTag').textContent=(S.day>=1&&S.day<=7)?`第 ${S.day} 日`:(S.day===0?'序':'尾');
+  el('povTag').textContent=S.pov==='rong'?'阿榕':'小满';
+  el('wallet').textContent='¥'+S.money;
+  el('hpNum').textContent=S.hp;
+  const fill=el('hpFill'),lamp=el('hpLamp');
+  fill.style.width=Math.max(0,Math.min(100,S.hp))+'%';
+  lamp.classList.remove('critical');
+  if(S.hp>=65){fill.style.background='linear-gradient(90deg,#5f9c6f,#8fbb92)';lamp.style.background='radial-gradient(circle at 35% 30%,#7fb98a,#3f7a52)';}
+  else if(S.hp>=40){fill.style.background='linear-gradient(90deg,#c9a44a,#dfc17a)';lamp.style.background='radial-gradient(circle at 35% 30%,#d9b64c,#9a7828)';}
+  else{fill.style.background='linear-gradient(90deg,#b2463a,#d4746a)';lamp.style.background='radial-gradient(circle at 35% 30%,#d86b5e,#8a2d24)';lamp.classList.add('critical');}
+  el('debtTag').style.display=S.debt>0?'block':'none';
+  if(S.debt>0){el('debtTag').textContent='欠 ¥'+S.debt;}
+}
+function moneyDelta(n){S.money=Math.round(S.money+n);if(S.money<0)S.money=0;updateHUD();}
+function hpDelta(n){S.hp=Math.round(Math.max(0,Math.min(100,S.hp+n)));updateHUD();}
+async function purchase(cost,buyLabel,buySub,skipLabel){
+  if(S.money<cost){await narrate('（手头紧，'+cost+' 块也拿不出了。）');return false;}
+  const r=await choose([{label:buyLabel,sub:buySub},{label:skipLabel||'省下这 '+cost+' 块',sub:''}]);return r===0;
+}
+function resetGame(){
+  Object.assign(S,{day:1,money:600,hp:100,debt:0,secret:null,pov:'rong',fragments:0,boughtSoup:0,boughtMed:false,boughtCake:false,nightShift:false,hpTier:'',lifeTier:'',luxSpend:0,brokeFlag:false});
+  hidePortrait();hideCompanion();el('choices').innerHTML='';el('dialogue').classList.add('hide');
+  clearHistory();
+}
+
+/* Toast */
+let toastTimer=null;
+function toast(msg){const t=el('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2300);}
+
+/* 章节/视角转场 */
+let skipChapter=false;
+function chapter(big,sub){
+  return new Promise(res=>{
+    if(skipChapter){res();return;}
+    const c=el('chapter');
+    $('.big',c).textContent=big;$('.sub',c).textContent=sub;
+    c.classList.remove('hide');
+    setTimeout(()=>{c.classList.add('hide');res();},1600);
+  });
+}
+async function povFlip(pov,big,sub){S.pov=pov;updateHUD();clearHistory();await chapter(big||(pov==='rong'?'阿榕':'小满'),sub||'');}
+
+/* ============ 小游戏 ============ */
+function mgShow(title,hint){el('backBtn').classList.add('hide');el('mgo').classList.add('on');el('mgoBody').innerHTML='';$('.mgTitle',el('mgo')).textContent=title;$('.mgHint',el('mgo')).textContent=hint||'';}
+function mgHide(){el('mgo').classList.remove('on');updateBackBtn();}
+function minigameScrew(night){
+  return new Promise(res=>{
+    mgShow('拧 螺 丝',night?'夜班 · 更快更沉':'对准金色区，点击拧紧');
+    el('mgoBody').innerHTML=`<div id="screwArea"><div id="screwDial"></div><div id="screwCore"></div><div id="screwDot"></div></div><div id="screwProg">螺 0 / 12</div>`;
+    let done=0,angle=Math.random()*Math.PI*2;const need=12,speed=night?0.045:0.035;
+    const arcStart=0,arcEnd=70*Math.PI/180;let raf;
+    function frame(){angle=(angle+speed)%(Math.PI*2);$('#screwDot').style.transform=`rotate(${angle*180/Math.PI}deg)`;raf=requestAnimationFrame(frame);}
+    raf=requestAnimationFrame(frame);
+    $('#screwArea').addEventListener('pointerdown',function hit(e){e.stopPropagation();
+      let a=angle%(Math.PI*2);if(a<0)a+=Math.PI*2;
+      if(a>=arcStart&&a<=arcEnd){done++;AudioBus.screw();$('#screwProg').textContent=`螺 ${done} / ${need}`;
+        if(done>=need){cancelAnimationFrame(raf);mgHide();res({ok:true});}}});
+  });
+}
+function minigameReceipt(){
+  return new Promise(res=>{
+    mgShow('整 理 单 据','按类别归档散落的票据');
+    const receipts=[{txt:'住院押金',amt:'¥400',cat:'押金单'},{txt:'处方药费',amt:'¥80',cat:'药费单'},{txt:'血常规检查',amt:'¥150',cat:'检查单'},{txt:'骨穿检查',amt:'¥260',cat:'检查单'},{txt:'取药单',amt:'¥120',cat:'药费单'},{txt:'二次押金',amt:'¥400',cat:'押金单'}];
+    let idx=0;
+    function render(){
+      if(idx>=receipts.length){mgHide();res({ok:true});return;}
+      const r=receipts[idx];
+      el('mgoBody').innerHTML=`<div id="receiptCard">${idx+1} / ${receipts.length}<div class="amount">${r.txt} · ${r.amt}</div></div><div id="catBtns"><button data-c="押金单">押金单</button><button data-c="药费单">药费单</button><button data-c="检查单">检查单</button></div>`;
+      $('#catBtns').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+        if(b.dataset.c===r.cat){idx++;AudioBus.stamp();render();}else{b.classList.add('wrong');AudioBus.error();setTimeout(()=>b.classList.remove('wrong'),400);}});
+    }render();
+  });
+}
+function minigameFuneral(){
+  return new Promise(res=>{
+    mgShow('葬 礼 · 低 语','移动视线，聆听人群');
+    const figures=[{id:'a',label:'撑伞男子',whisper:'“外地来的，不容易。”',c:'#2e3428'},{id:'b',label:'低声大婶',whisper:'“年纪轻轻，造孽。”',c:'#32382c'},{id:'c',label:'点烟工友',whisper:'“她昨儿还说，出院回老家。”',c:'#2a3026'},{id:'d',label:'沉默丈夫',whisper:'“阿珍说，你们好好的。”',c:'#283026'}];
+    let seen=new Set();
+    el('mgoBody').innerHTML=`<div id="crowd">`+figures.map(f=>`<div class="fig" data-id="${f.id}"><svg viewBox="0 0 56 86"><ellipse cx="28" cy="24" rx="12" ry="16" fill="${f.c}"/><path d="M6,86 Q28,58 50,86 Z" fill="${f.c}"/></svg><span style="color:#cfc4ac;font-size:12px">${f.label}</span></div>`).join('')+`</div><div id="whisper"></div>`;
+    $('#crowd').addEventListener('click',e=>{const fig=e.target.closest('.fig');if(!fig)return;const f=figures.find(x=>x.id===fig.dataset.id);fig.classList.add('done');$('#whisper').textContent='“'+f.whisper+'”';seen.add(f.id);AudioBus.heartbeat(0.25);
+      if(seen.size>=figures.length){setTimeout(()=>{mgHide();res({ok:true});},700);}});
+  });
+}
+function minigameWait(){
+  return new Promise(res=>{
+    mgShow('手 术 室 外','时间很慢。你可以看时间、看红灯、听呼吸。');
+    const lines={time:['凌晨三点十七分。','三点五十二分。','四点多了。','天快亮了。'],lamp:['「手术中」的红灯一直亮着。','灯晃了一下。','你移开眼，又看回去。'],breath:['你听不见她的呼吸，只听见自己的。','机器在响，一下，一下。','你数到一百，又从一数起。']};
+    let ti=0,li=0,bi=0,clicks=0;
+    el('mgoBody').innerHTML=`<div id="waitBtns"><button data-k="time">看时间</button><button data-k="lamp">看红灯</button><button data-k="breath">听呼吸</button></div><div id="waitLine"></div>`;
+    $('#waitBtns').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=b.dataset.k;let arr=k==='time'?lines.time:k==='lamp'?lines.lamp:lines.breath;
+      let idx=k==='time'?ti:k==='lamp'?li:bi;$('#waitLine').textContent=arr[idx];
+      if(k==='time')ti=Math.min(ti+1,arr.length-1);if(k==='lamp')li=Math.min(li+1,arr.length-1);if(k==='breath')bi=Math.min(bi+1,arr.length-1);
+      AudioBus.heartbeat(0.5);clicks++;if(clicks>=4){setTimeout(()=>{mgHide();res({ok:true});},900);}});
+  });
+}
+
+/* ============ 剧情（水墨文笔 · 细腻铺陈） ============ */
+
+/* 序章 */
+async function prologue(){
+  S.day=0;S.pov='rong';showHUD();updateHUD();
+  setScene('ward');
+  await narrate('墨黑。一个疲倦的声音，从远处徐徐传来——');
+  await say('许闻','周医生。2010 年夏。你还记得那个女孩吗。',{portrait:'xuwen'});
+  await say('周谨','……（翻动病历，纸页发出干涩的沙沙声）',{portrait:'zhou'});
+  await narrate('他停了一下。窗外有雨，打在玻璃上，不大。');
+  await say('周谨','林小满。她男朋友叫陈榕。是我第一个——治不好的病人。',{portrait:'zhou'});
+  await say('许闻','治不好？',{portrait:'xuwen'});
+  await say('周谨','不是病。是穷。',{portrait:'zhou'});
+  await narrate('病历本上的字迹在一寸寸洇开。镜头推向窗外——',{scene:'streetphoto'});
+  await narrate('广东。二零一零年。一个潮湿得能拧出水的夏天。');
+  S.day=1;updateHUD();
+}
+
+/* Day 1 */
+async function day1(){
+  S.day=1;updateHUD();
+  await povFlip('rong','阿榕','第一章 · 日常与房租');
+  setScene('bedroomphoto');
+  await narrate('天还没亮透。出租屋的窗玻璃上凝着一层薄薄的水雾，外头有摩托车突突地过去。');
+  await say('小满','鸡蛋在锅里。记得吃。别又空着肚子上工。',{portrait:'xiaoman_smile'});
+  await say('阿榕','知道的。晚上想吃什么。',{portrait:'rong'});
+  await say('小满','老火汤。我煲。',{portrait:'xiaoman_smile'});
+  await narrate('她站在门口替他整了一下领口。指尖有点凉。',{scene:'streetphoto'});
+  await narrate('城中村的巷子窄，两边的招牌层层叠叠地伸出来。早餐摊冒着白汽。');
+  await say('早餐摊阿姨','靓仔——肠粉，加蛋？',{portrait:'auntie'});
+  const bf=await choose([{label:'“加蛋，带走。”',sub:'−¥5'},{label:'“白粥就好。”',sub:'−¥2'}]);
+  if(bf===0)moneyDelta(-5);else moneyDelta(-2);
+  await narrate('蒸笼揭开，一团白汽升上去，散在电线之间。');
+  await narrate('才走到楼梯口，房东已经等在那儿了。');
+  await say('房东','陈榕——房租今日交齐。唔好拖。',{portrait:null});
+  await say('阿榕','今晚回屋给你。',{portrait:'rong',companion:'sil_girl'});
+  moneyDelta(-350);toast('房租 −¥350');
+  await narrate('工资还没发，钱已经少了一小半。他把找零塞进裤兜，手心有点潮。');
+  hideCompanion();
+  await povFlip('xiaoman','小满','第一章 · 出租屋下午');
+  setScene('bedroomphoto');
+  await narrate('小满一个人把屋子收拾了两遍。她在日历上圈出一个日子——三天后。');
+  await narrate('傍晚开始煲汤。莲藕、排骨、蜜枣。水汽从锅盖缝里钻出来，把厨房的墙洇得更潮了。');
+  await narrate('她翻开日记本，写了几句。写着写着，自己笑了一下。');
+  await narrate('——阿榕说想喝汤。希望他今晚不加太多班。');
+  await narrate('‖ 第一章 终 ‖');
+}
+
+/* Day 2 */
+async function day2(){
+  S.day=2;updateHUD();
+  await povFlip('xiaoman','小满','第二章 · 隐瞒');
+  setScene('clinicphoto');
+  await narrate('社区医院的走廊里，日光灯管发出嗡嗡的低响。小满坐着，手里攥着一张单子。');
+  await narrate('刚才抽了两管血。针眼的地方还没完全止住，她用拇指摁着。');
+  await say('社区医生','血象很差——先去市人民医院做个骨穿。',{portrait:null});
+  await narrate('他停了一下，往她身后看了看。');
+  await say('社区医生','让你家属陪你。',{portrait:null});
+  await say('小满','……我没有家属在这边。我自己去。',{portrait:'xiaoman_sad'});
+  const frag=await choose([{label:'……（低头时，看见地上那张撕了角的病历便签）',sub:'。拾'},{label:'起身离开'}]);
+  if(frag===0){S.fragments++;toast('拾得 医者笔迹 残页（1/3）');}
+  await narrate('她把转诊单折了又折，压在相框底下一张合影的背面。',{scene:'bedroomphoto'});
+  await narrate('手机屏幕亮了一下。阿榕发来的：');
+  await narrate('“今晚加班。别等我了。”');
+  const sec=await choose([{label:'隐瞒。“好。注意休息。”',sub:'阿榕晚些知情 · 少一日加班'},{label:'发短信告诉他。“我有点不舒服，去了社区医院。”',sub:'阿榕早知 · 次日起多排夜班'}]);
+  S.secret=(sec===0)?'hide':'tell';
+  await povFlip('rong','阿榕','第二章 · 流水线下班');
+  setScene('factoryphoto');
+  await narrate('流水线的轰隆声到了傍晚也没停。阿榕回来时已经过了十点。');
+  await narrate('桌上有一碗汤。凉的。油花在汤面上凝成薄薄一层。');
+  await say('阿榕','汤怎么不喝。',{portrait:'rong'});
+  await say('小满','（背对着他，声音很轻）凉了就凉了。明天再煲。',{portrait:'xiaoman_sad'});
+  hpDelta(-5);
+  await narrate('‖ 第二章 终 ‖');
+}
+
+/* 间幕 1 */
+async function interlude1(){
+  setScene('hospital1');
+  await narrate('（间幕 · 医生口述）');
+  await say('许闻','你第一次见到他们，是什么情形。',{portrait:'xuwen'});
+  await say('周谨','男孩攥着一叠单子。女孩一直在笑。后来我才知道——她越怕，越笑。',{portrait:'zhou'});
+}
+
+/* Day 3 */
+async function day3(){
+  S.day=3;updateHUD();
+  await povFlip('rong','阿榕','第三章 · 住院与押金');
+  setScene('factoryphoto');
+  await narrate('流水线上的零件一个接一个地过来。手已经麻了，但脑子还在算。');
+  await narrate('——今天的工资，加上之前省下的，够不够。够不够。');
+  await minigameScrew(false);moneyDelta(130);toast('日薪 +¥130');
+  if(S.secret==='tell'){
+    setScene('bedroomphoto');
+    await narrate('他挪开相框时，一张对折的纸露了出来。');
+    await say('阿榕','你怎么不早点讲。',{portrait:'rong'});
+    await say('小满','怕你担心。',{portrait:'xiaoman_sad'});
+    await say('阿榕','我现在更担心。',{portrait:'rong'});
+  }else{
+    await narrate('那张转诊单还压在照片底下。他没有发现。',{scene:'bedroomphoto'});
+    await narrate('小满一个人去办了住院。让前台把消息暂时压着。');
+  }
+  setScene('hospital2');
+  await narrate('市人民医院的走廊很长，顶灯白得刺眼。周谨医生从诊室出来，手里拿着一沓结果。');
+  await say('周谨','再生障碍性贫血。需要准备钱——可能要骨髓移植。',{portrait:'zhou',companion:null});
+  await say('阿榕','多少钱。',{portrait:'rong',companion:null});
+  await say('周谨','手术费——大约三十万。',{portrait:'zhou',companion:null});
+  await narrate('阿榕没说话。手机响了。是养父打来的。');
+  await say('养父','（画外，很远）……她小时候，被扔在村口。我爹捡回来的。现在——我们也没有办法。',{portrait:null});
+  await narrate('八人间病房，靠窗的床位。押金。');
+  moneyDelta(-400);toast('押金 −¥400');
+  await povFlip('xiaoman','小满','第三章 · 病房夜');
+  setScene('hospital1');
+  await narrate('病房里的灯熄了大半，只有走廊的光从门缝漏进来。邻床是个削苹果的女人，果皮一圈没断。');
+  await say('珍姐','李惠珍。叫我珍姐就行。我下周出院。',{portrait:'jie'});
+  await say('小满','那太好了。',{portrait:'xiaoman',companion:null});
+  await say('珍姐','你男朋友真好——天天给你送饭。我那个啊，只会蹲楼下抽烟。',{portrait:'jie'});
+  await narrate('阿榕端进来一碗汤。热气把病房的冷白色洇得暖了一点。');
+  if(await purchase(30,'买一碗老火汤 ¥30','+6 HP')){moneyDelta(-30);S.boughtSoup++;S.luxSpend++;hpDelta(6);toast('汤 +6 HP'); if(S.luxSpend===LUX_MAX+1)toast('钱都花在汤和蛋糕上了——手术费要悬了');}
+  hpDelta(-8);
+  await narrate('‖ 第三章 终 ‖');
+}
+
+/* Day 4 */
+async function day4(){
+  S.day=4;updateHUD();
+  await povFlip('rong','阿榕','第四章 · 夜班与失眠');
+  setScene('factoryphoto');
+  await say('工友老六','榕哥——不要命啦。昨天才熬过通宵。',{portrait:'laoliu'});
+  await say('阿榕','缺钱。',{portrait:'rong'});
+  await say('老六','……行。我跟你换班。',{portrait:'laoliu'});
+  await narrate('白班的机器声还没散。');
+  await minigameScrew(false);moneyDelta(130);toast('日薪 +¥130');
+  if(S.secret==='tell'){
+    await narrate('夜班的车间更闷，传送带的速度像是没变——但眼前的东西越来越虚。太阳穴在跳。');
+    await minigameScrew(true);moneyDelta(70);S.nightShift=true;toast('夜班 +¥70');
+  }else{
+    await narrate('他还不知道。所以他下了白班就回去了。少挣的那七十块——他还不知道它有多重要。');
+  }
+  await povFlip('xiaoman','小满','第四章 · 病房夜');
+  setScene('hospital1');
+  await narrate('半夜里，小满被一阵很小的哭声惊醒。不是嚎啕，是那种拼命压着、只剩气声的哭。');
+  await narrate('珍姐在哭。小满没出声，黑暗里，她把手伸过去，握住珍姐的手。');
+  await say('珍姐','我老家还有娃——我不能死在这。',{portrait:'jie'});
+  await say('小满','不会死的。我们都会好。',{portrait:'xiaoman'});
+  await narrate('珍姐慢慢不哭了。小满望着窗外，什么也没说。');
+  if(S.secret==='hide'){
+    const d4=await choose([{label:'继续瞒。“别让他更累了。”',sub:''},{label:'让周医生直接告诉他。“手术费不是他一个人能扛的。”',sub:''}]);
+    if(d4===1)S.secret='tell_late';
+  }
+  if(await purchase(30,'买老火汤 ¥30','+6 HP')){moneyDelta(-30);S.boughtSoup++;S.luxSpend++;hpDelta(6);toast('汤 +6 HP'); if(S.luxSpend===LUX_MAX+1)toast('钱都花在汤和蛋糕上了——手术费要悬了');}
+  hpDelta(-8);
+  await narrate('‖ 第四章 终 ‖');
+}
+
+/* 间幕 2 */
+async function interlude2(){
+  setScene('hospital2');
+  await narrate('（间幕 · 医生口述）');
+  await say('许闻','为什么偏偏记得她。',{portrait:'xuwen'});
+  await say('周谨','因为到最后——最平静的不是医生，是病人。',{portrait:'zhou'});
+}
+
+/* Day 5 */
+async function day5(){
+  S.day=5;updateHUD();
+  await povFlip('rong','阿榕','第五章 · 处方药与第二笔押金');
+  setScene('hospital2');
+  await narrate('缴费窗口前排着队。阿榕把一沓单据摊在走廊的椅子上，一张一张地看。');
+  await narrate('数字跳进眼里，像冷水。');
+  await minigameReceipt();
+  if(await purchase(80,'买处方药 ¥80','+10 HP · 强烈建议','不买药')){moneyDelta(-80);S.boughtMed=true;hpDelta(10);toast('药 +10 HP');}
+  if(S.money>=400){
+    const dep=await choose([{label:'第二笔押金全额 ¥400',sub:''},{label:'先交一半 ¥200',sub:'欠 ¥200'}]);
+    if(dep===0){moneyDelta(-400);}else{moneyDelta(-200);S.debt+=200;toast('欠款 +¥200');}
+  }else{
+    await say('护士','（看了一眼你手里的钱）先交一半吧。剩下的——后面再说。',{portrait:'hushi'});
+    moneyDelta(-200);S.debt+=200;toast('欠款 +¥200');
+  }
+  await povFlip('xiaoman','小满','第五章 · 走廊');
+  setScene('hospital2');
+  if(S.secret==='tell'||S.secret==='tell_late'){
+    await say('周谨','你男朋友来问我手术费的事了。三十万——他凑不出来。',{portrait:'zhou',companion:null});
+    await say('周谨','骨髓库有配型。但押金不等人。你让他多撑几天——他撑得住吗。',{portrait:'zhou',companion:null});
+    await say('小满','（很久才开口）……我知道了。谢谢你，周医生。',{portrait:'xiaoman_sad'});
+  }else{
+    await narrate('走廊尽头，小满一个人坐着。没有人知道她在想什么。');
+  }
+  if(await purchase(30,'买老火汤 ¥30','+6 HP')){moneyDelta(-30);S.boughtSoup++;S.luxSpend++;hpDelta(6);toast('汤 +6 HP'); if(S.luxSpend===LUX_MAX+1)toast('钱都花在汤和蛋糕上了——手术费要悬了');}
+  hpDelta(-10);
+  await narrate('‖ 第五章 终 ‖');
+}
+
+/* Day 6 */
+async function day6(){
+  S.day=6;updateHUD();
+  await povFlip('rong','阿榕','第六章 · 葬礼');
+  setScene('hospital1');
+  await narrate('阿榕端了汤到病房。珍姐的床——空了。');
+  await say('护士','昨晚走的。家属说不办了。直接回老家。',{portrait:'hushi',companion:null});
+  await narrate('殡仪馆门口。雨不大，密。黑伞挤着黑伞。',{scene:'funeralphoto'});
+  await minigameFuneral();
+  await say('珍姐丈夫','阿珍说——你们好好的。',{portrait:null});
+  await narrate('他蹲在门口，脚边放着蛇皮袋。从袋子里掏出几个橘子。');
+  await say('珍姐丈夫','她让带的。',{portrait:null});
+  await say('阿榕','……谢谢。',{portrait:'rong_sad',companion:null});
+  await narrate('橘子皮有点凉。沾着雨水。');
+  await povFlip('xiaoman','小满','第六章 · 空床');
+  setScene('hospital1');
+  await say('小满','阿榕——珍姐昨天还帮我削苹果。',{portrait:'xiaoman_sad'});
+  await say('阿榕','知道。',{portrait:'rong'});
+  await say('小满','我想回家。回爷爷那儿。',{portrait:'xiaoman_sad'});
+  await say('阿榕','等你好了。我陪你。',{portrait:'rong'});
+  if(await purchase(30,'再买一碗老火汤 ¥30','+6 HP')){moneyDelta(-30);S.boughtSoup++;S.luxSpend++;hpDelta(6);toast('汤 +6 HP'); if(S.luxSpend===LUX_MAX+1)toast('钱都花在汤和蛋糕上了——手术费要悬了');}
+  hpDelta(-18);
+  await narrate('‖ 第六章 终 ‖');
+}
+
+/* 间幕 3 */
+async function interlude3(){
+  setScene('officephoto');
+  await narrate('（间幕 · 医生口述）');
+  await say('许闻','后悔吗。',{portrait:'xuwen'});
+  await say('周谨','后悔过。后来不了。',{portrait:'zhou'});
+}
+
+/* Day 7 */
+async function day7(){
+  S.day=7;updateHUD();
+  await povFlip('xiaoman','小满','第七章 · 生日');
+  setScene('birthdayphoto');
+  await narrate('天蒙蒙亮。小满醒来，看见床头多了一只小蛋糕——蛋糕店那种最便宜的，奶油上插了一根小蜡烛。');
+  await say('小满','你怎么知道我生日。',{portrait:'xiaoman_smile'});
+  await say('阿榕','日历上——你圈了三天。',{portrait:'rong'});
+  if(await purchase(30,'买蛋糕 ¥30','+6 HP','不买')){moneyDelta(-30);S.boughtCake=true;S.luxSpend++;hpDelta(6);toast('蛋糕 +6 HP'); if(S.luxSpend===LUX_MAX+1)toast('钱都花在汤和蛋糕上了——手术费要悬了');}
+  await povFlip('rong','阿榕','第七章 · 手术首付');
+  setScene('corridorphoto');
+  await narrate('银行转账短信：+ ¥2,000。家里能凑的都凑了。');
+  moneyDelta(2000);toast('家中汇款 +¥2000');
+  await narrate('阿榕把身上所有的钱掏出来。老六和几个工友在旁边，把皱巴巴的几十块凑在一起。');
+  await say('老六','榕哥，先拿着。以后再说。',{portrait:'laoliu'});
+  await say('阿榕','谢了。');
+  await say('老六','嫂子会好的。',{portrait:'laoliu'});
+  await narrate('手术首付两万四。汇款 + 全部的积蓄 + 工友们凑出来的尾数，正好。');
+  moneyDelta(-Math.min(S.money,2400));
+  await narrate('手术推车推过走廊。小满冲他比了个 V。那手指很细，但很稳。');
+  await minigameWait();
+  hpDelta(-12);
+  S.day=8;updateHUD();
+}
+
+/* 结局 */
+const LUX_MAX=3; // 高消费上限：老火汤/蛋糕累计消费次数 > 此数 → 积蓄被掏空，无力负担医药费
+const BAD_RATE=0.70; // 坏结局概率微调旋钮：0.70 → 坏 70% / 好 30%（改这一个数字即可继续微操）
+function endingResult(){
+  let hpTier,lifeTier,broke;
+  if(S.hp>=65)hpTier='A';else if(S.hp>=40)hpTier='B';else hpTier='C';
+  // 把本该留着付医药费的钱，全花在汤和蛋糕上 → 手术首付凑不齐
+  broke=(S.luxSpend>LUX_MAX);
+  // 坏结局概率由 BAD_RATE 控制：超消费强制坏结局，其余随机判定
+  if(broke||Math.random()<BAD_RATE)hpTier='C';
+  lifeTier=(S.debt===0&&!broke)?'clean':'debt';
+  return{hpTier,lifeTier,broke};
+}
+async function ending(){
+  const r=endingResult();
+  hidePortrait();hideCompanion();
+  setScene(r.hpTier==='C'?'funeralphoto':'hospital1');
+  if(r.broke){
+    await narrate('手术室的门，始终没有为她打开。');
+    await narrate('两万四的手术首付，他们凑不齐。押金交不上，排期一拖再拖。小满的床位，被挪给了能交钱的人。');
+    await narrate('钱，都花在了那些一碗碗汤、那只小蛋糕上——爱看得见的，却填不进缴费单的窟窿。');
+    await narrate('她没能上手术台。窗外有鸟，叫了两声，飞远了。');AudioBus.heartbeat(1);
+  }else{
+    await narrate('手术室的门，终于开了。');
+    if(r.hpTier==='A'){await narrate('手术成功。无菌舱里住了一个月。她出院那天，外头有太阳。');}
+    else if(r.hpTier==='B'){await narrate('手术成功。但感染并发症了。出院之后，需要长期吃药。像一棵挪过盆的花，活着——但也落下了根上的伤。');}
+    else{await narrate('手术失败了。小满在无菌舱里安静地走了。窗外有鸟。叫了两声，飞远了。');AudioBus.heartbeat(1);}
+  }
+  if(r.hpTier==='C'){
+    // 坏结局（小满离世）尾声：措辞与好结局区分，避免"他们"指向不明
+    if(r.lifeTier==='clean'){await narrate('阿榕带着她的日记本，退了租，回乡下去了。给爷爷带了一捧家乡的土。');}
+    else{await narrate('阿榕留在了广东。继续打工。还钱。日子还在往前挪，只是身边少了一个人。');}
+  }else{
+    if(r.lifeTier==='clean'){await narrate('他们退了租，回乡下去了。给爷爷修了坟。租了一间有阳光的房子。');}
+    else{await narrate('他们留在了广东。继续打工。还钱。日子还在往前挪。');}
+    if(r.lifeTier==='clean'){await narrate('他们终于，有了一扇朝南的窗。');}
+  }
+  S.hpTier=r.hpTier;S.lifeTier=r.lifeTier;S.brokeFlag=r.broke;
+}
+
+/* 尾声 */
+async function epilogue(){
+  await narrate('「回到现在」',{scene:'officephoto'});
+  await say('许闻','后来呢。',{portrait:'xuwen'});
+  if(S.brokeFlag){
+    await say('周谨','我后来常常想——钱，有时候就是命。他们不是不爱，是那两万四，怎么也凑不齐。',{portrait:'zhou'});
+  }else if(S.fragments>=3){
+    await say('周谨','我后来常常想——如果我再有钱一点，或者这个社会再早一点帮他们。结局会不会不一样。',{portrait:'zhou'});
+    await say('周谨','可是医生也是普通人。我治不好穷。',{portrait:'zhou'});
+  }else{
+    await say('周谨','后来——他们就像无数个打工的人一样。平凡地活着。',{portrait:'zhou'});
+  }
+  await narrate('采访人 许闻 · 谨以此篇，献给每一个在小城里相爱又硬扛的人。');
+}
+
+/* 祠堂终章（最后一幕 · 四景混合：石阶→堂内→廊下→香案） */
+async function shrineScene(){
+  if(!S.brokeFlag&&S.hpTier!=='C'){
+    setScene('shrine1');
+    await narrate('——第二年，清明。');
+    await narrate('回乡的路比记忆里短。石阶扫得干净，檐下的灯笼换了新的。');
+    await narrate('小满走得慢，但走得稳。堂上的光从瓦缝漏下来，落在青砖上。',{scene:'shrine2'});
+    await say('小满','爷爷，我回来了。这回，是好好的回来的。',{portrait:'xiaoman_smile'});
+    await narrate('香案前，陈榕点上三炷香，递了一炷给她。',{scene:'shrine4'});
+    await narrate('烟升得很直。他望着她——望着这个差点弄丢的人——忽然觉得，朝南的窗，亮得很。');
+    await narrate('下台阶时，小满在廊柱边停了停，把手贴在温热的石墩上。',{scene:'shrine3'});
+    await narrate('「走吧，」她说，「汤还煲着。」');
+  }else{
+    setScene('shrine1');
+    await narrate('——小满走后的第一个清明。');
+    await narrate('陈榕回了村。一个人。祠堂的檐角长了瓦松，风一吹，簌簌地落灰。');
+    await narrate('他跨过高高的门槛。堂上的字迹淡了，光从瓦缝里漏下来，落在空荡的青砖上。',{scene:'shrine2'});
+    await narrate('他在廊下的旧木椅上坐了很久。那原是长辈们常坐的位置。',{scene:'shrine3'});
+    await narrate('香案上，他摆了一只碗——老火汤，凉的。又摆了一块最便宜的蛋糕，奶油塌了半边。',{scene:'shrine4'});
+    await say('阿榕','我来迟了。',{portrait:'rong_sad'});
+    await narrate('香点上。烟散得很慢，像舍不得走。他磕了三个头，额头抵着冰凉的砖。');
+    if(S.brokeFlag){await narrate('债，他后来一点点还清了。只是还清那天，没有人等他回家吃饭。');}
+    await narrate('走出祠堂，外头有雨。不大，密。像那年殡仪馆门口的雨。');
+  }
+}
+
+function finale(){
+  el('backBtn').classList.add('hide');
+  const d=document.createElement('div');d.id='end';d.className='on';
+  d.style.cssText='position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;padding:30px;text-align:center;background:radial-gradient(ellipse at center,#3a352a 0%,#1a1712 100%);';
+  let outT,lifT;
+  if(S.hpTier==='A')outT='她出院了';else if(S.hpTier==='B')outT='她挺过来了，落下了病根';else outT=S.brokeFlag?'她没能上手术台':'她没能回来';
+  lifT=(S.lifeTier==='clean')?'他们回家了':'他们留在了广东';
+  d.innerHTML=`<div style="font-family:var(--kai);font-size:40px;letter-spacing:.5em;color:#e9dfcc">落幕</div>
+    <div style="color:#d6c7ae;font-size:17px;line-height:2.2;white-space:pre-wrap">你的结局：${outT} · ${lifT}\n\n健康条：${S.hp} / 100\n余额：¥${S.money}　欠款：¥${S.debt}\n墨迹拾遗：${S.fragments} / 3</div>
+    <div style="color:#b9a987;font-size:14px;letter-spacing:.25em">南方有雪，落在每一个等待的人心上</div>
+    <div><button class="again" style="font-family:var(--serif);font-size:15px;letter-spacing:.3em;padding:10px 26px;cursor:pointer;color:#e9dfcc;background:rgba(233,223,204,.06);border:1px solid rgba(233,223,204,.3);border-radius:2px;margin:6px">从头来过</button>
+    <button class="menu" style="font-family:var(--serif);font-size:15px;letter-spacing:.3em;padding:10px 26px;cursor:pointer;color:#b9a987;background:transparent;border:1px solid rgba(185,169,135,.3);border-radius:2px;margin:6px">回到立轴</button></div>`;
+  hidePortrait();hideCompanion();el('dialogue').classList.add('hide');el('choices').innerHTML='';
+  el('stage').appendChild(d);
+  d.querySelector('.again').addEventListener('click',()=>location.reload());
+  d.querySelector('.menu').addEventListener('click',()=>location.reload());
+}
+
+/* 主循环 & 章节 */
+async function main(){
+  resetGame();showHUD();el('title').style.display='none';
+  await prologue();await day1();await day2();await interlude1();
+  await day3();await day4();await interlude2();
+  await day5();await day6();await interlude3();
+  await day7();await ending();await epilogue();await shrineScene();finale();
+}
+const CHAPTER_PRESETS={1:{money:600,hp:100,debt:0,secret:null,fragments:0,luxSpend:0,brokeFlag:false},2:{money:248,hp:100,debt:0,secret:null,fragments:0,luxSpend:0,brokeFlag:false},3:{money:248,hp:95,debt:0,secret:'tell',fragments:0,luxSpend:0,brokeFlag:false},4:{money:118,hp:87,debt:0,secret:'tell',fragments:0,luxSpend:0,brokeFlag:false},5:{money:318,hp:79,debt:0,secret:'tell',fragments:0,luxSpend:0,brokeFlag:false},6:{money:117,hp:79,debt:0,secret:'tell',fragments:0,luxSpend:0,brokeFlag:false},7:{money:57,hp:61,debt:0,secret:'tell',fragments:0,luxSpend:0,brokeFlag:false}};
+const FLOW=[{t:'day1'},{t:'day2'},{t:'interlude1'},{t:'day3'},{t:'day4'},{t:'interlude2'},{t:'day5'},{t:'day6'},{t:'interlude3'},{t:'day7'}];
+const DAY_TO_IDX={1:0,2:1,3:3,4:4,5:6,6:7,7:9};
+const FNS={day1,day2,interlude1,day3,day4,interlude2,day5,day6,interlude3,day7};
+async function jumpTo(n){
+  resetGame();const p=CHAPTER_PRESETS[n];
+  Object.assign(S,{day:n,money:p.money,hp:p.hp,debt:p.debt,secret:p.secret,fragments:p.fragments,boughtSoup:0,boughtMed:false,boughtCake:false,nightShift:false,luxSpend:0,brokeFlag:false});
+  showHUD();updateHUD();el('title').style.display='none';
+  for(let i=DAY_TO_IDX[n];i<FLOW.length;i++)await FNS[FLOW[i].t]();
+  await ending();await epilogue();await shrineScene();finale();
+}
+function showChapters(){
+  let h='<h1 style="font-size:28px;letter-spacing:.4em;color:var(--ink)">选 章</h1><div style="font-size:12px;letter-spacing:.3em;color:var(--ink3);margin:8px 0 16px">供评委快速翻阅</div><div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:520px;margin:0 auto">';
+  for(let i=1;i<=7;i++)h+=`<button data-c="${i}" style="min-width:90px">第${i}章</button>`;
+  h+='</div><button id="chBack" style="background:transparent;color:var(--ink3);border-color:rgba(107,102,91,.4);margin-top:18px">返回</button>';
+  el('title').innerHTML=h;
+  el('title').querySelectorAll('button[data-c]').forEach(b=>b.addEventListener('click',()=>{skipChapter=false;jumpTo(parseInt(b.dataset.c));}));
+  el('title').querySelector('#chBack').addEventListener('click',()=>location.reload());
+}
+el('btnStart').addEventListener('click',()=>{skipChapter=false;main();});
+el('btnChapters').addEventListener('click',showChapters);
+window.addEventListener('load',()=>{hidePortrait();hideCompanion();el('dialogue').classList.add('hide');});
+</script>
+</body>
+</html>
